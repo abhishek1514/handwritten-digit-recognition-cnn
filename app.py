@@ -4,58 +4,37 @@ from tkinter import messagebox
 from pathlib import Path
 
 import torch
-import torch.nn as nn
+
 from PIL import Image, ImageDraw
 from torchvision import transforms
 
+from model import DigitCNN
 
 
+# ==========================================
+# STEP 1: DEVICE AND MODEL PATH
+# ==========================================
 
 device = torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
 )
 
-MODEL_PATH = Path(__file__).resolve().parent / "digit_cnn.pth"
+BASE_DIR = Path(__file__).resolve().parent
+
+MODEL_PATH = BASE_DIR / "digit_cnn.pth"
 
 
-
-
-class DigitCNN(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-
-        self.conv_layers = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-
-            nn.Conv2d(16, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2)
-        )
-
-        self.fc_layers = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(32 * 7 * 7, 128),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(128, 10)
-        )
-
-    def forward(self, x):
-        x = self.conv_layers(x)
-        x = self.fc_layers(x)
-        return x
-
-
-
+# ==========================================
+# STEP 2: LOAD TRAINED MODEL
+# ==========================================
 
 if not MODEL_PATH.exists():
+
     raise FileNotFoundError(
         "digit_cnn.pth not found. "
         "Run train_model.py first."
     )
+
 
 model = DigitCNN().to(device)
 
@@ -66,13 +45,16 @@ state_dict = torch.load(
 )
 
 model.load_state_dict(state_dict)
+
 model.eval()
 
 print("Model loaded successfully")
-print("Device:", device)
+print("Using device:", device)
 
 
-
+# ==========================================
+# STEP 3: IMAGE TRANSFORMATION
+# ==========================================
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -80,50 +62,49 @@ transform = transforms.Compose([
 ])
 
 
-
+# ==========================================
+# STEP 4: IMAGE PREPROCESSING
+# ==========================================
 
 def preprocess_digit(image):
 
-    
     bbox = image.getbbox()
 
     if bbox is None:
         return None
 
-    
+    # Crop the digit
     cropped = image.crop(bbox)
 
-    
-    width, height = cropped.size
-
-    padding = 20
-
-    padded = Image.new(
-        "L",
-        (width + padding * 2, height + padding * 2),
-        0
-    )
-
-    padded.paste(cropped, (padding, padding))
-
-   
-    padded.thumbnail(
+    # Resize while maintaining aspect ratio
+    cropped.thumbnail(
         (20, 20),
         Image.Resampling.LANCZOS
     )
 
+    # Create 28x28 black image
+    final_image = Image.new(
+        "L",
+        (28, 28),
+        0
+    )
 
-    final_image = Image.new("L", (28, 28), 0)
+    # Center the digit
+    x = (28 - cropped.width) // 2
+    y = (28 - cropped.height) // 2
 
-  
-    x = (28 - padded.width) // 2
-    y = (28 - padded.height) // 2
+    final_image.paste(
+        cropped,
+        (x, y)
+    )
 
-    final_image.paste(padded, (x, y))
-
+    # Apply MNIST normalization
     return transform(final_image)
 
 
+# ==========================================
+# STEP 5: CREATE TKINTER WINDOW
+# ==========================================
 
 root = tk.Tk()
 
@@ -154,9 +135,12 @@ tk.Label(
 ).pack(pady=(0, 15))
 
 
-
+# ==========================================
+# STEP 6: DRAWING CANVAS
+# ==========================================
 
 CANVAS_SIZE = 280
+
 BRUSH_WIDTH = 18
 
 canvas = tk.Canvas(
@@ -172,7 +156,7 @@ canvas = tk.Canvas(
 canvas.pack()
 
 
-
+# PIL image buffer
 image_buffer = Image.new(
     "L",
     (CANVAS_SIZE, CANVAS_SIZE),
@@ -185,7 +169,9 @@ last_x = None
 last_y = None
 
 
-
+# ==========================================
+# STEP 7: DRAWING FUNCTIONS
+# ==========================================
 
 def start_draw(event):
 
@@ -201,7 +187,7 @@ def draw_digit(event):
 
     if last_x is not None and last_y is not None:
 
-       
+        # Draw on Tkinter canvas
         canvas.create_line(
             last_x,
             last_y,
@@ -214,7 +200,7 @@ def draw_digit(event):
             smooth=True
         )
 
-       
+        # Draw on PIL image buffer
         draw.line(
             (
                 last_x,
@@ -226,7 +212,7 @@ def draw_digit(event):
             width=BRUSH_WIDTH
         )
 
-       
+        # Rounded brush ends
         radius = BRUSH_WIDTH // 2
 
         draw.ellipse(
@@ -252,11 +238,15 @@ def stop_draw(event):
 
 
 canvas.bind("<Button-1>", start_draw)
+
 canvas.bind("<B1-Motion>", draw_digit)
+
 canvas.bind("<ButtonRelease-1>", stop_draw)
 
 
-
+# ==========================================
+# STEP 8: PREDICT DIGIT
+# ==========================================
 
 def predict_digit():
 
@@ -269,16 +259,16 @@ def predict_digit():
 
         return
 
-    
+    # Preprocess image
     input_tensor = preprocess_digit(image_buffer)
 
     if input_tensor is None:
         return
 
-    
+    # Add batch dimension
     input_tensor = input_tensor.unsqueeze(0).to(device)
 
-   
+    # Prediction
     with torch.no_grad():
 
         logits = model(input_tensor)
@@ -296,15 +286,17 @@ def predict_digit():
 
     predicted_digit = top_digits[0, 0].item()
 
-    confidence = top_probabilities[0, 0].item() * 100
+    confidence = (
+        top_probabilities[0, 0].item() * 100
+    )
 
-    
+    # Display main prediction
     result_label.config(
         text=f"Predicted Digit: {predicted_digit}",
         fg="#70F0A0"
     )
 
-  s
+    # Display top three predictions
     top_results = []
 
     for digit, probability in zip(
@@ -317,18 +309,18 @@ def predict_digit():
         )
 
     confidence_label.config(
-        text=(
-            f"Top Predictions: {' | '.join(top_results)}"
-        )
+        text="Top Predictions: " + " | ".join(top_results)
     )
 
     print(
-        f"Prediction: {predicted_digit} | "
+        f"Prediction: {predicted_digit}, "
         f"Confidence: {confidence:.2f}%"
     )
 
 
-
+# ==========================================
+# STEP 9: CLEAR CANVAS
+# ==========================================
 
 def clear_canvas():
 
@@ -357,7 +349,9 @@ def clear_canvas():
     )
 
 
-
+# ==========================================
+# STEP 10: BUTTONS
+# ==========================================
 
 button_frame = tk.Frame(
     root,
@@ -393,7 +387,9 @@ tk.Button(
 ).pack(side=tk.LEFT, padx=8)
 
 
-
+# ==========================================
+# STEP 11: RESULT DISPLAY
+# ==========================================
 
 result_label = tk.Label(
     root,
@@ -418,6 +414,8 @@ confidence_label = tk.Label(
 confidence_label.pack(padx=10)
 
 
-
+# ==========================================
+# STEP 12: START APPLICATION
+# ==========================================
 
 root.mainloop()

@@ -3,49 +3,62 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from pathlib import Path
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 
+from model import DigitCNN
+
 
 # ==========================================
-# PHASE 1: DATA ACQUISITION & PREPROCESSING
+# STEP 1: DEVICE CONFIGURATION
 # ==========================================
 
-# STEP 1: Device configuration
 device = torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
 )
 
 print("Using device:", device)
 
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+MODEL_PATH = BASE_DIR / "digit_cnn.pth"
 
-# STEP 2: Image preprocessing
+
+# ==========================================
+# STEP 2: IMAGE PREPROCESSING
+# ==========================================
+
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.1307,), (0.3081,))
 ])
 
 
-# STEP 3: Download MNIST training dataset
+# ==========================================
+# STEP 3: LOAD MNIST DATASET
+# ==========================================
+
 train_dataset = datasets.MNIST(
-    root="./data",
+    root=str(DATA_DIR),
     train=True,
     download=True,
     transform=transform
 )
 
-
-# STEP 4: Download MNIST testing dataset
 test_dataset = datasets.MNIST(
-    root="./data",
+    root=str(DATA_DIR),
     train=False,
     download=True,
     transform=transform
 )
 
 
-# STEP 5: Create DataLoaders
+# ==========================================
+# STEP 4: CREATE DATALOADERS
+# ==========================================
+
 train_loader = DataLoader(
     train_dataset,
     batch_size=64,
@@ -59,7 +72,10 @@ test_loader = DataLoader(
 )
 
 
-# STEP 6: Verify dataset
+# ==========================================
+# STEP 5: VERIFY DATASET
+# ==========================================
+
 print("\nDataset Information")
 
 print("Training images:", len(train_dataset))
@@ -73,16 +89,20 @@ print("Image tensor shape:", images[0].shape)
 print("First few labels:", labels[:10].tolist())
 
 
-# STEP 7: Visualize sample images
+# ==========================================
+# STEP 6: VISUALIZE SAMPLE IMAGES
+# ==========================================
+
 fig, axes = plt.subplots(2, 5, figsize=(10, 5))
 
 for i, ax in enumerate(axes.flat):
 
-    # Reverse normalization for visualization
     img = images[i].squeeze() * 0.3081 + 0.1307
 
     ax.imshow(img.clamp(0, 1), cmap="gray")
+
     ax.set_title(f"Label: {labels[i].item()}")
+
     ax.axis("off")
 
 plt.tight_layout()
@@ -90,72 +110,19 @@ plt.show()
 
 
 # ==========================================
-# PHASE 2: CNN MODEL DEVELOPMENT & TRAINING
+# STEP 7: INITIALIZE CNN MODEL
 # ==========================================
 
-# STEP 8: Define CNN architecture
-class DigitCNN(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-
-        # Feature extraction layers
-        self.conv_layers = nn.Sequential(
-
-            nn.Conv2d(
-                in_channels=1,
-                out_channels=16,
-                kernel_size=3,
-                padding=1
-            ),
-
-            nn.ReLU(),
-
-            nn.MaxPool2d(kernel_size=2),
-
-            nn.Conv2d(
-                in_channels=16,
-                out_channels=32,
-                kernel_size=3,
-                padding=1
-            ),
-
-            nn.ReLU(),
-
-            nn.MaxPool2d(kernel_size=2)
-        )
-
-        # Classification layers
-        self.fc_layers = nn.Sequential(
-
-            nn.Flatten(),
-
-            nn.Linear(32 * 7 * 7, 128),
-
-            nn.ReLU(),
-
-            nn.Dropout(0.2),
-
-            nn.Linear(128, 10)
-        )
-
-    def forward(self, x):
-
-        x = self.conv_layers(x)
-
-        x = self.fc_layers(x)
-
-        return x
-
-
-# STEP 9: Initialize model
 model = DigitCNN().to(device)
 
 print("\nCNN Architecture:")
 print(model)
 
 
-# STEP 10: Define loss function and optimizer
+# ==========================================
+# STEP 8: LOSS FUNCTION AND OPTIMIZER
+# ==========================================
+
 criterion = nn.CrossEntropyLoss()
 
 optimizer = optim.Adam(
@@ -164,7 +131,10 @@ optimizer = optim.Adam(
 )
 
 
-# STEP 11: Train the model
+# ==========================================
+# STEP 9: TRAIN CNN MODEL
+# ==========================================
+
 epochs = 5
 
 print("\nStarting CNN Training...\n")
@@ -180,19 +150,14 @@ for epoch in range(epochs):
         images = images.to(device)
         labels = labels.to(device)
 
-        # Clear previous gradients
         optimizer.zero_grad()
 
-        # Forward propagation
         outputs = model(images)
 
-        # Calculate loss
         loss = criterion(outputs, labels)
 
-        # Backpropagation
         loss.backward()
 
-        # Update model weights
         optimizer.step()
 
         running_loss += loss.item()
@@ -205,7 +170,10 @@ for epoch in range(epochs):
     )
 
 
-# STEP 12: Evaluate model on test dataset
+# ==========================================
+# STEP 10: MODEL EVALUATION
+# ==========================================
+
 model.eval()
 
 correct = 0
@@ -230,13 +198,17 @@ with torch.no_grad():
 accuracy = 100.0 * correct / total
 
 print("\nModel Evaluation")
+
 print(f"Test Accuracy: {accuracy:.2f}%")
 
 
-# STEP 13: Save trained model weights
+# ==========================================
+# STEP 11: SAVE TRAINED MODEL
+# ==========================================
+
 torch.save(
     model.state_dict(),
-    "digit_cnn.pth"
+    MODEL_PATH
 )
 
-print("\nModel saved successfully: digit_cnn.pth")
+print("\nModel saved successfully:", MODEL_PATH)
